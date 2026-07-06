@@ -1,0 +1,19 @@
+[project]
+name = "local-ai-core"
+version = "0.1.0"
+description = "プライバシーファースト・ローカルAIエコシステムの共通コア層(LLM抽象化・共通データスキーマ・デバイス内ID管理)"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.27",
+    "cryptography>=42.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["local_ai_core*"]

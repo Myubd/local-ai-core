@@ -1,0 +1,28 @@
+# ============================================================
+# local-ai-core .gitignore
+# ============================================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+
+venv/
+.venv/
+env/
+ENV/
+
+.env
+.env.*
+!.env.example
+
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
