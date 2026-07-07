@@ -1,0 +1,23 @@
+{
+  "app_key": "archlife",
+  "display_name": "ライフサポートOS",
+  "version": "0.1.0",
+  "requested_scopes": [
+    {
+      "scope": "schedule_items:read",
+      "purpose": "他アプリが登録した予定・締切をまとめて表示するため"
+    },
+    {
+      "scope": "schedule_items:write",
+      "purpose": "ユーザーが追加したタスク/予定を共通テーブルに保存するため"
+    },
+    {
+      "scope": "memory:read:life.*",
+      "purpose": "生活リズムの傾向をもとに一日の提案を行うため"
+    },
+    {
+      "scope": "memory:write:life.*",
+      "purpose": "睡眠・活動パターンの推測結果を他アプリと共有するため"
+    }
+  ]
+}

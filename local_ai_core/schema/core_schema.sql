@@ -121,3 +121,75 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_profile_created ON events(profile_id, created_at);
+
+-- ============================================================
+-- permission_scopes: 各アプリが「使う可能性がある」データアクセスの申告。
+-- プラグインのマニフェスト(plugins/manifest.py)から登録される「申請書」。
+-- ここに存在するだけではまだ何も読めない。実際の許可は permission_grants で管理する。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS permission_scopes (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    app_key      TEXT NOT NULL,              -- source_apps.app_key
+    scope        TEXT NOT NULL,              -- 例: "schedule_items:read", "memory:read:career.*"
+    purpose      TEXT NOT NULL,              -- ユーザーに提示する用途説明(日本語の平易な文)
+    registered_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (app_key) REFERENCES source_apps(app_key),
+    UNIQUE (app_key, scope)
+);
+
+-- ============================================================
+-- permission_grants: ユーザーが実際に許可したスコープ。
+-- 「AIが全部知っている」を避けるための唯一の関所(gate)。
+-- expires_at が NULL の場合は明示的に revoke されるまで有効(永続許可)。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS permission_grants (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id  INTEGER NOT NULL,
+    scope_id    INTEGER NOT NULL,
+    granted_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    expires_at  TEXT,                        -- ISO8601。単発/期間限定の許可に使用
+    revoked_at  TEXT,                        -- NOT NULLなら失効済み
+    FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE,
+    FOREIGN KEY (scope_id) REFERENCES permission_scopes(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_permission_grants_profile ON permission_grants(profile_id, scope_id);
+
+-- ============================================================
+-- access_log: 実際にどのアプリがどのスコープでデータを読んだかの監査ログ。
+-- 「検証可能なプライバシー」を担保する(ユーザーが後から確認できる)。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS access_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id  INTEGER NOT NULL,
+    app_key     TEXT NOT NULL,
+    scope       TEXT NOT NULL,
+    granted     INTEGER NOT NULL,            -- 1=許可されて読めた 0=拒否された(デバッグ/監査用)
+    accessed_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_access_log_profile ON access_log(profile_id, accessed_at);
+
+-- ============================================================
+-- memory_items: 全アプリ共通の「AIメモリー」。
+-- 生の会話ログや資料は各アプリ側(将来のDocument Center)に残し、
+-- ここには「確定した/推測された事実」だけを構造化して置く。
+-- confidence で「ユーザーが確認した事実」と「AIの推測」を区別し、
+-- 参照側が推測情報を事実であるかのように扱わないようにする。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS memory_items (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id      INTEGER NOT NULL,
+    source_app      TEXT NOT NULL,           -- 書き込んだアプリ。source_apps.app_key
+    key             TEXT NOT NULL,           -- 例: "career.strengths", "life.morning_type"
+    value_json      TEXT NOT NULL,
+    confidence      TEXT NOT NULL CHECK (confidence IN ('user_confirmed', 'ai_inferred')),
+    created_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_app) REFERENCES source_apps(app_key),
+    UNIQUE (profile_id, key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_items_profile_key ON memory_items(profile_id, key);

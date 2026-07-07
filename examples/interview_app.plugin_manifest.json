@@ -1,0 +1,23 @@
+{
+  "app_key": "interview_app",
+  "display_name": "就活支援",
+  "version": "0.1.0",
+  "requested_scopes": [
+    {
+      "scope": "schedule_items:read",
+      "purpose": "面接予定やES締切をライフサポートOSの予定表と重複表示しないため"
+    },
+    {
+      "scope": "schedule_items:write",
+      "purpose": "確定した面接日程を共通の予定表に登録するため"
+    },
+    {
+      "scope": "memory:read:career.*",
+      "purpose": "過去の自己分析結果を面接対策の提案に活かすため"
+    },
+    {
+      "scope": "memory:write:career.*",
+      "purpose": "自己分析・強み弱みの結果を他アプリでも使えるよう保存するため"
+    }
+  ]
+}
