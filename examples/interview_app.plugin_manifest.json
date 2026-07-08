@@ -18,6 +18,14 @@
     {
       "scope": "memory:write:career.*",
       "purpose": "自己分析・強み弱みの結果を他アプリでも使えるよう保存するため"
+    },
+    {
+      "scope": "knowledge_items:write",
+      "purpose": "企業研究資料の要約を横断検索できるよう共通台帳に登録するため"
+    },
+    {
+      "scope": "knowledge_items:read",
+      "purpose": "他アプリが登録した資料も含めて企業研究の全体像を把握するため"
     }
   ]
 }
