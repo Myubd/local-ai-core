@@ -38,6 +38,7 @@ class PermissionDenied(Exception):
 
 @dataclass
 class GrantInfo:
+    app_key: str
     scope: str
     purpose: str
     granted_at: str
@@ -187,7 +188,7 @@ class PermissionGate:
         with db_session(self.db_path) as conn:
             rows = conn.execute(
                 """
-                SELECT ps.scope AS scope, ps.purpose AS purpose,
+                SELECT ps.app_key AS app_key, ps.scope AS scope, ps.purpose AS purpose,
                        pg.granted_at AS granted_at, pg.expires_at AS expires_at
                 FROM permission_grants pg
                 JOIN permission_scopes ps ON ps.id = pg.scope_id
