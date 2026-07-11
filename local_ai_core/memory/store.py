@@ -138,3 +138,31 @@ class MemoryStore:
                 "DELETE FROM memory_items WHERE profile_id = ? AND key = ?",
                 (profile_id, key),
             )
+
+
+def _stringify_value(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return "、".join(f"{k}: {v}" for k, v in value.items())
+    if isinstance(value, list):
+        return "、".join(str(v) for v in value)
+    return str(value)
+
+
+def format_items_for_prompt(items: list[MemoryItem]) -> str:
+    """MemoryItemのリストを、confidenceラベル付きでプロンプトに埋め込みやすい文字列に整形する。
+
+    各アプリがプロンプトを組み立てる際にこの関数を通すことで、
+    "ai_inferred"(AIの推測)を"user_confirmed"(本人確認済み)と同じ重みで
+    モデルに渡してしまう事故を防ぐ。ラベルは1件ごとに付与するため、
+    一部の項目だけが未確認の場合でも取り違えない。
+    空リストの場合は空文字列を返す(呼び出し側でそのままプロンプトに連結してよい)。
+    """
+    if not items:
+        return ""
+    lines = []
+    for item in items:
+        label = "本人確認済み" if item.confidence == "user_confirmed" else "AIの推測・未確認"
+        lines.append(f"・[{label}] {item.key}: {_stringify_value(item.value)}")
+    return "\n".join(lines)
