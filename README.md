@@ -24,6 +24,10 @@
 | `permissions/gate.py` | 「AIが全部知っている」を避けるための権限ゲート。スコープの申告・ユーザーによる許可/失効・アクセス直前チェック・監査ログ | 新規設計。就活支援/ライフサポートOS双方の「今後追加すべき機能」として要件定義したものを実装 |
 | `memory/store.py` | 全アプリ共通のAIメモリー。`user_confirmed`（確定事実）と`ai_inferred`（AI推測）を区別して保持し、読み書きは必ず`permissions`経由 | 新規設計(最優先モジュール) |
 | `plugins/manifest.py` | 各アプリが `plugin_manifest.json` 1枚で自己申告・登録できるプラグイン機構 | 新規設計。`source_apps`(既存)と`permissions`(新規)を橋渡しする |
+| `documents/store.py` | 全アプリ共通の「ドキュメントセンター」。ファイルの実体は端末ローカルに置いたまま、所在(パス)とメタデータだけを共通台帳で管理 | 新規設計(追加モジュール1)。knowledge_items(要約主体)とは役割を分離 |
+| `automation/store.py` `automation/engine.py` | 「もし〜なら〜する」ルールのCRUDと、権限ゲートを必ず通す実行エンジン。現状のactionは「提案を作る」のみ(外部への自動実行は未実装) | 新規設計(追加モジュール2) |
+| `assistant/orchestrator.py` | 「AIが全部知っている」を避けるためのアシスタント本体。参照したい候補(ContextSource)ごとにスコープを判定し、許可された範囲だけをLLMに渡す。何を使い/使わなかったかを常に記録・提示する | 新規設計(追加モジュール3・最重要) |
+| `api/router.py` | 上記すべてをHTTP越しに使うための共通FastAPIルーター。Node.js製のフロントエンド(Archlife)や将来のデスクトップアシスタントから利用する窓口 | 新規設計。`pip install local-ai-core[api]` が必要 |
 
 ## 各アプリからの使い方（想定）
 
@@ -95,3 +99,5 @@ gate.revoke(profile_id=1, app_key="interview_app", scope="memory:read:career.*")
 2. **Phase 2**: Archlifeのバックエンドをこのパッケージを使うFastAPIアプリに移植し、DBをSQLiteへ変更。`identity/device_identity.py` で `anon_id` + パスフレーズ方式を置き換える
 3. **Phase 3**: `schema/core_schema.sql` を実データベースとして採用し、両アプリのアプリ固有テーブルから `profile_id` / `schedule_item_id` 等で参照する
 4. **Phase 4**(実装済み): `permissions` / `memory` / `plugins` を追加。各アプリは `plugin_manifest.json` で自己申告し、`PermissionGate` 経由でのみ他アプリのデータ・メモリーにアクセスできるようにする。この段階を経て初めて、Document Center / Automation / Voice Assistant など「複数アプリのデータを横断するモジュール」を安全に追加できる
+5. **Phase 5**(実装済み): 「追加したいモジュール」として要望のあった `documents`(ドキュメントセンター) / `automation`(オートメーション) / `assistant`(AIアシスタント)を追加。すべて Phase 4 の `PermissionGate` を経由する設計を踏襲しており、コアのデータアクセス経路は増えていない(新しいテーブルと、その上に薄く載る権限チェック付きストア/エンジンが増えただけ)
+6. **Phase 6**(このリポジトリのスコープ外・`life-support-os-gateway`側で対応): `local_ai_core.api.build_core_router` を各アプリ(interview_appのFastAPI・archlife-fastapi)に `include_router()` するか、専用のgatewayプロセスに集約するかを決め、Archlifeの既存Reactフロントエンド・interview_appのフロントエンドから同じ`/core/*`エンドポイントを呼べるようにする。定期実行(automationのスケジューラ)・デスクトップ常駐のAIアシスタントUIもこの段階で構築する

@@ -193,3 +193,98 @@ CREATE TABLE IF NOT EXISTS memory_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_memory_items_profile_key ON memory_items(profile_id, key);
+
+-- ============================================================
+-- documents: 全アプリ共通の「ドキュメントセンター」台帳。
+--
+-- 設計方針:
+-- - ここに置くのは「ファイルの所在(パス/ハッシュ)とメタデータ」のみ。
+--   ファイルの実体は引き続き端末のローカルディスク上に置き、内容そのものを
+--   このDBにコピーしない(core.dbを暗号化ボールト化してしまうと、単一障害点が
+--   増え、かつ「何でも入っている倉庫」を作ってしまうため)。
+-- - knowledge_items(要約主体・検索台帳)とは役割が異なる。documentsは
+--   「この資料ファイルはどこにあり、どのアプリ/どの用途のものか」という
+--   ファイル管理そのものが目的。knowledge_items側からdocument_idを
+--   参照して要約を紐づけることは可能(疎結合)。
+-- - 読み書きは他の共通テーブルと同様に PermissionGate 経由。
+--   スコープは "documents:read" / "documents:write"。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS documents (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id      INTEGER NOT NULL,
+    source_app      TEXT NOT NULL,
+    source_ref_id   TEXT,
+    title           TEXT NOT NULL,
+    category        TEXT,
+    file_path       TEXT NOT NULL,
+    file_hash       TEXT,
+    mime_type       TEXT,
+    tags_json       TEXT,
+    is_active       INTEGER NOT NULL DEFAULT 1,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_app) REFERENCES source_apps(app_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_documents_profile ON documents(profile_id, category);
+CREATE INDEX IF NOT EXISTS idx_documents_source ON documents(source_app, source_ref_id);
+
+-- ============================================================
+-- automation_rules / automation_runs: 全アプリ横断の「もし〜なら〜する」ルール。
+--
+-- 設計方針:
+-- - ルールは「どのスコープを使って良いか」をルール自体には持たせず、実行時に
+--   毎回 PermissionGate.require() を通す(automation/engine.py参照)。
+--   ルールを保存できることと、実際にデータへアクセスできることは別。
+-- - actionは「提案を作る」までを既定とし、実際にメール送信やAPI呼び出しなど
+--   外部に影響する行為は、この最初のバージョンでは扱わない(自動でユーザーの
+--   代わりに何かを実行する機能は誤作動時の影響が大きいため段階的に導入する)。
+-- - 実行結果は automation_runs に必ず記録し、access_logと同様に
+--   「何が・いつ・何をトリガーに動いたか」を後から検証可能にする。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS automation_rules (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id      INTEGER NOT NULL,
+    owner_app       TEXT NOT NULL,
+    name            TEXT NOT NULL,
+    trigger_type    TEXT NOT NULL,
+    trigger_config_json TEXT NOT NULL DEFAULT '{}',
+    action_type     TEXT NOT NULL,
+    action_config_json TEXT NOT NULL DEFAULT '{}',
+    required_scopes_json TEXT NOT NULL DEFAULT '[]',
+    is_enabled      INTEGER NOT NULL DEFAULT 1,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE,
+    FOREIGN KEY (owner_app) REFERENCES source_apps(app_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_automation_rules_profile ON automation_rules(profile_id, is_enabled);
+
+CREATE TABLE IF NOT EXISTS automation_runs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_id         INTEGER NOT NULL,
+    profile_id      INTEGER NOT NULL,
+    status          TEXT NOT NULL,
+    result_summary  TEXT,
+    ran_at          TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (rule_id) REFERENCES automation_rules(id) ON DELETE CASCADE,
+    FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_automation_runs_rule ON automation_runs(rule_id, ran_at);
+
+-- ============================================================
+-- assistant_sessions: 「AIアシスタントが今回の会話で実際に参照したスコープ」の記録。
+-- 常設の許可(permission_grants)を前提に動くが、会話ごとに何を参照したかを
+-- 透明にするため、access_logとは別に会話単位の要約としても保持する。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS assistant_sessions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id      INTEGER NOT NULL,
+    title           TEXT,
+    used_scopes_json TEXT NOT NULL DEFAULT '[]',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+);

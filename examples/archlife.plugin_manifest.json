@@ -18,6 +18,14 @@
     {
       "scope": "memory:write:life.*",
       "purpose": "睡眠・活動パターンの推測結果を他アプリと共有するため"
+    },
+    {
+      "scope": "documents:write",
+      "purpose": "領収書・家計資料のファイルの所在をドキュメントセンターに登録するため"
+    },
+    {
+      "scope": "documents:read",
+      "purpose": "他アプリが登録した資料も含めて一覧・検索できるようにするため"
     }
   ]
 }

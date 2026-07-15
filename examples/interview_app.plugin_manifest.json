@@ -26,6 +26,14 @@
     {
       "scope": "knowledge_items:read",
       "purpose": "他アプリが登録した資料も含めて企業研究の全体像を把握するため"
+    },
+    {
+      "scope": "documents:write",
+      "purpose": "履歴書・職務経歴書ファイルの所在をドキュメントセンターに登録するため"
+    },
+    {
+      "scope": "documents:read",
+      "purpose": "他アプリ(学習支援等)が登録した資料も含めて一覧できるようにするため"
     }
   ]
 }
