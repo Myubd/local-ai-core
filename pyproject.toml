@@ -19,3 +19,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["local_ai_core*"]
+
+[tool.setuptools.package-data]
+# core_schema.sql は .py ファイルではないため、setuptoolsは何も指定しないと
+# 配布物(wheel/site-packages)に含めない。editable install (`pip install -e .`)
+# ではソースツリーを直接見に行くため気づきにくいが、通常のpip installでは
+# "FileNotFoundError: core_schema.sql" になる実際の不具合だった。
+local_ai_core = ["schema/*.sql"]
