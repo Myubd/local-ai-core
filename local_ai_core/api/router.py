@@ -40,6 +40,7 @@ from ..memory import MemoryStore
 from ..knowledge import KnowledgeStore
 from ..schedule import ScheduleStore
 from ..documents import DocumentStore
+from ..search import SearchStore
 from ..automation import AutomationStore, AutomationEngine
 from ..assistant import AssistantOrchestrator, ContextSource
 from ..llm import ChatMessage, AiSettings, LLMRouter
@@ -114,6 +115,7 @@ def build_core_router(
     knowledge = KnowledgeStore(db_path, gate=gate)
     schedule = ScheduleStore(db_path, gate=gate)
     documents = DocumentStore(db_path, gate=gate)
+    search = SearchStore(db_path, gate=gate)
     automation_store = AutomationStore(db_path)
     automation_engine = AutomationEngine(db_path, gate=gate, store=automation_store)  # noqa: F841 (非LLM自動化の将来利用向けに保持)
     assistant = AssistantOrchestrator(db_path, gate=gate)
@@ -225,6 +227,22 @@ def build_core_router(
         except PermissionDenied as e:
             raise HTTPException(status_code=403, detail=str(e))
         return [i.__dict__ for i in items]
+
+    # -----------------------------------------------------------------
+    # search(knowledge_items / documents の横断全文検索)
+    # -----------------------------------------------------------------
+    @router.get("/search")
+    def search_all(profile_id: int, app_key: str, q: str, limit: int = 20):
+        """knowledge_items / documents を横断検索する。
+        新しいスコープは作らず、既存の knowledge_items:read / documents:read を
+        流用する。片方だけ許可されていれば、許可されている方だけを返す
+        (両方とも未許可の場合のみ403)。
+        """
+        try:
+            hits = search.search(profile_id, app_key, q, limit)
+        except PermissionDenied as e:
+            raise HTTPException(status_code=403, detail=str(e))
+        return [h.__dict__ for h in hits]
 
     # -----------------------------------------------------------------
     # automation

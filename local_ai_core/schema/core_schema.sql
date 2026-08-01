@@ -288,3 +288,60 @@ CREATE TABLE IF NOT EXISTS assistant_sessions (
     created_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
 );
+
+-- ============================================================
+-- search: knowledge_items / documents の全文検索(SQLite FTS5)。
+--
+-- 設計方針:
+-- - 「external content」方式を使い、本体データ(knowledge_items/documents)を
+--   複製しない。FTS5仮想テーブルにはトークン化済みインデックスだけを持たせる。
+-- - 検索結果からもとの行を引く時は rowid = knowledge_items.id / documents.id
+--   として突合する(このファイル内のトリガーがそれを保証する)。
+-- - 権限の考え方は search 自体のスコープを新設せず、既存の
+--   "knowledge_items:read" "documents:read" をそのまま流用する
+--   (search/store.py 参照)。全文検索用に新しいスコープを増やすと、
+--   ユーザーが許可を求められる項目がいたずらに増えるだけで、実質的には
+--   同じデータへの読み取りであるため。
+-- ============================================================
+-- 補足: knowledge_items_fts / documents_fts (CREATE VIRTUAL TABLE 本体)は
+-- ここではなく schema/migrate.py の _ensure_fts_tables() で作成する。
+-- 理由: 日本語のようにスペースで分かち書きされない言語では、既定の
+-- unicode61 トークナイザだと文がほぼ1つの巨大トークンになり検索が
+-- 機能しない。trigram トークナイザ(SQLite 3.34+)を優先して使いたいが、
+-- 動作環境のSQLiteビルドによっては使えない場合があるため、Python側で
+-- try/exceptしてunicode61にフォールバックできるようにしている
+-- (executescriptの1文として書いてしまうと、この分岐ができない)。
+
+CREATE TRIGGER IF NOT EXISTS knowledge_items_ai AFTER INSERT ON knowledge_items BEGIN
+    INSERT INTO knowledge_items_fts(rowid, title, summary, tags_json)
+    VALUES (new.id, new.title, new.summary, new.tags_json);
+END;
+
+CREATE TRIGGER IF NOT EXISTS knowledge_items_ad AFTER DELETE ON knowledge_items BEGIN
+    INSERT INTO knowledge_items_fts(knowledge_items_fts, rowid, title, summary, tags_json)
+    VALUES ('delete', old.id, old.title, old.summary, old.tags_json);
+END;
+
+CREATE TRIGGER IF NOT EXISTS knowledge_items_au AFTER UPDATE ON knowledge_items BEGIN
+    INSERT INTO knowledge_items_fts(knowledge_items_fts, rowid, title, summary, tags_json)
+    VALUES ('delete', old.id, old.title, old.summary, old.tags_json);
+    INSERT INTO knowledge_items_fts(rowid, title, summary, tags_json)
+    VALUES (new.id, new.title, new.summary, new.tags_json);
+END;
+
+CREATE TRIGGER IF NOT EXISTS documents_ai AFTER INSERT ON documents BEGIN
+    INSERT INTO documents_fts(rowid, title, tags_json)
+    VALUES (new.id, new.title, new.tags_json);
+END;
+
+CREATE TRIGGER IF NOT EXISTS documents_ad AFTER DELETE ON documents BEGIN
+    INSERT INTO documents_fts(documents_fts, rowid, title, tags_json)
+    VALUES ('delete', old.id, old.title, old.tags_json);
+END;
+
+CREATE TRIGGER IF NOT EXISTS documents_au AFTER UPDATE ON documents BEGIN
+    INSERT INTO documents_fts(documents_fts, rowid, title, tags_json)
+    VALUES ('delete', old.id, old.title, old.tags_json);
+    INSERT INTO documents_fts(rowid, title, tags_json)
+    VALUES (new.id, new.title, new.tags_json);
+END;

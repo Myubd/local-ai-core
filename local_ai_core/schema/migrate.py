@@ -21,6 +21,10 @@ _SCHEMA_PATH = Path(__file__).resolve().parent / "core_schema.sql"
 # (バージョン番号, SQL) の形式。番号は連番で、既存のものは変更・削除しない。
 _MIGRATIONS: list[tuple[int, str]] = [
     # (1, "ALTER TABLE profiles ADD COLUMN avatar_path TEXT"),
+    (1, "INSERT INTO knowledge_items_fts(rowid, title, summary, tags_json) "
+        "SELECT id, title, summary, tags_json FROM knowledge_items"),
+    (2, "INSERT INTO documents_fts(rowid, title, tags_json) "
+        "SELECT id, title, tags_json FROM documents"),
 ]
 
 _CREATE_MIGRATION_TABLE = """
@@ -66,12 +70,48 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         conn.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (?)", (version,))
 
 
+def _ensure_fts_tables(conn: sqlite3.Connection) -> None:
+    """knowledge_items_fts / documents_fts を作成する。
+
+    日本語のようにスペースで分かち書きされない言語では、既定の unicode61
+    トークナイザだと文がほぼ1つの巨大トークンになり実質検索できない
+    (「サブスクの棚卸し」という文の中の「サブスク」だけでは引っかからない)。
+    そのため trigram トークナイザ(SQLite 3.34+で利用可能)を優先する。
+    動作環境のSQLiteビルドによっては trigram が使えない場合があるため、
+    その時だけ unicode61 にフォールバックする(英数字主体のデータであれば
+    それでも最低限は機能する)。
+    """
+    specs = [
+        ("knowledge_items_fts", "knowledge_items", "title, summary, tags_json"),
+        ("documents_fts", "documents", "title, tags_json"),
+    ]
+    for fts_table, base_table, columns in specs:
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (fts_table,)
+        ).fetchone()
+        if exists:
+            continue
+        try:
+            conn.execute(
+                f"CREATE VIRTUAL TABLE {fts_table} USING fts5("
+                f"{columns}, content='{base_table}', content_rowid='id', "
+                f"tokenize='trigram')"
+            )
+        except sqlite3.OperationalError:
+            conn.execute(
+                f"CREATE VIRTUAL TABLE {fts_table} USING fts5("
+                f"{columns}, content='{base_table}', content_rowid='id', "
+                f"tokenize='unicode61')"
+            )
+
+
 def init_core_schema(db_path: str = "core.db") -> None:
     """コアスキーマ(profile/schedule_items/knowledge_items 等)を初期化する。
     アプリ起動時に一度呼べばよい(何度呼んでも安全)。
     """
     with db_session(db_path) as conn:
         conn.executescript(_SCHEMA_PATH.read_text(encoding="utf-8"))
+        _ensure_fts_tables(conn)
         _run_migrations(conn)
 
 
