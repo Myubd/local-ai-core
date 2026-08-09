@@ -6,6 +6,7 @@ Ollamaの実インストールやネットワークが絡む部分(install_ollam
 ここでは、切り出しの過程で壊れやすい「純粋なロジック部分」と「ログハンドラーの
 差し込み口」を中心に確認する。
 """
+import sys
 import time
 
 import pytest
@@ -154,3 +155,58 @@ def test_crash_log_path_uses_app_folder_name(tmp_path, monkeypatch):
     path = lk.crash_log_path("MyApp")
     assert "MyApp" in path
     assert path.endswith("crash.log")
+
+
+# ── コンソールを閉じた時のハンドラー(Windows専用の×ボタン対策) ────
+
+def test_install_console_close_handler_noop_on_non_windows(monkeypatch):
+    monkeypatch.setattr(lk.sys, "platform", "linux")
+    called = []
+    # 例外が出ず、何も登録されない(呼ばれない)ことだけを確認する
+    lk.install_console_close_handler(lambda: called.append(True))
+    assert called == []
+
+
+def test_install_console_close_handler_registers_and_triggers_cleanup(monkeypatch):
+    # Windows専用のctypes呼び出しをモックに差し替えて、
+    # 「登録される」「CTRL_CLOSE_EVENT等でcleanup_fnが呼ばれる」
+    # 「それ以外のイベントでは呼ばれない」ことを検証する。
+    monkeypatch.setattr(lk.sys, "platform", "win32")
+
+    registered_handlers = []
+
+    class _FakeKernel32:
+        def SetConsoleCtrlHandler(self, handler, add):
+            registered_handlers.append(handler)
+            return True
+
+    class _FakeWindll:
+        kernel32 = _FakeKernel32()
+
+    import types
+    fake_ctypes = types.SimpleNamespace(
+        windll=_FakeWindll(),
+        WINFUNCTYPE=lambda *a, **kw: (lambda fn: fn),  # デコレータ相当を素通しする
+    )
+    fake_wintypes = types.SimpleNamespace(BOOL=bool, DWORD=int)
+    fake_ctypes.wintypes = fake_wintypes
+
+    monkeypatch.setitem(sys.modules, "ctypes", fake_ctypes)
+    monkeypatch.setitem(sys.modules, "ctypes.wintypes", fake_wintypes)
+
+    called = []
+    lk.install_console_close_handler(lambda: called.append(True))
+
+    assert len(registered_handlers) == 1
+    handler_fn = registered_handlers[0]
+
+    # CTRL_CLOSE_EVENT (2) では呼ばれる
+    result = handler_fn(2)
+    assert called == [True]
+    assert result is True
+
+    # 無関係なイベント(例: CTRL_C_EVENT=0)では呼ばれない
+    called.clear()
+    result = handler_fn(0)
+    assert called == []
+    assert result is False

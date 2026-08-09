@@ -589,6 +589,60 @@ def ensure_ollama(required_models: list[str], on_error: Callable[[], None] | Non
 
 
 # ============================================================
+# Windowsコンソールの「閉じるボタン」対策
+# ============================================================
+# Ctrl+CはPythonのKeyboardInterruptとして正常にfinally節まで届くが、
+# コンソールウィンドウを×ボタンで閉じた場合はCTRL_CLOSE_EVENTが送られ、
+# Windowsは既定で約5秒後にハンドラー登録の有無に関わらずプロセスを
+# 強制終了する。Pythonはこのイベント用のハンドラーを何も登録していない
+# ため、finally節が実行される保証が無く、子プロセスを起動している
+# ランチャー(launch_gateway.py等)では、子プロセスが親を失って残り
+# 続けてしまう(実際にこの現象が起きたため対応した)。
+_CTRL_CLOSE_EVENT = 2
+_CTRL_LOGOFF_EVENT = 5
+_CTRL_SHUTDOWN_EVENT = 6
+
+# ハンドラー関数への参照をどこかで保持しておかないとGCされ、
+# コールバックが呼ばれた時点でクラッシュする可能性があるため、
+# モジュールレベルで保持する。
+_console_close_callback = None
+
+
+def install_console_close_handler(cleanup_fn: Callable[[], None]) -> None:
+    """コンソールが閉じられた時(×ボタン・ログオフ・シャットダウン)に
+    cleanup_fn を呼ぶハンドラーを登録する(Windows専用、他OSでは何もしない)。
+
+    cleanup_fn は別スレッド(Windowsが用意する制御ハンドラースレッド)から
+    呼ばれる点に注意。Windowsが与える猶予は既定で約5秒しかないため、
+    cleanup_fn は手早く終わるようにすること。
+    """
+    if sys.platform != "win32":
+        return
+
+    global _console_close_callback
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        handler_routine = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
+
+        def _handler(ctrl_type):
+            if ctrl_type in (_CTRL_CLOSE_EVENT, _CTRL_LOGOFF_EVENT, _CTRL_SHUTDOWN_EVENT):
+                try:
+                    cleanup_fn()
+                except Exception:
+                    pass
+                return True  # このプロセスがイベントを処理済みであることを伝える
+            return False
+
+        _console_close_callback = handler_routine(_handler)
+        ctypes.windll.kernel32.SetConsoleCtrlHandler(_console_close_callback, True)
+    except Exception:
+        pass  # 登録に失敗しても起動自体は継続する(無いよりはまし程度の保険のため)
+
+
+# ============================================================
 # Windows コンソール・stdio対策
 # ============================================================
 
