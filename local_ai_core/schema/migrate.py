@@ -41,6 +41,15 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
+    if db_path != ":memory:":
+        # WALモード: core.dbは5つのアプリ(exe)が同時にread/writeし得る共有DBのため、
+        # デフォルトのDELETEジャーナルモードだと書き込み中に他プロセスが
+        # ブロックされやすい(=同時アクセスで "database is locked" が起きやすい)。
+        # WALにすることで読み取り側は書き込み中でもブロックされなくなる。
+        # busy_timeoutは、それでも短時間ロックが競合した場合に即エラーにせず
+        # 待たせるための保険(5秒)。
+        conn.execute("PRAGMA journal_mode = WAL;")
+        conn.execute("PRAGMA busy_timeout = 5000;")
     return conn
 
 
