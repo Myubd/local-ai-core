@@ -95,9 +95,11 @@ gate.revoke(profile_id=1, app_key="interview_app", scope="memory:read:career.*")
 
 ## 移行の順序（設計書と対応）
 
-1. **Phase 1**: 就活支援アプリの `llm/*` をこのパッケージの `llm/*` に置き換え、Archlifeの `server.js` のAI呼び出し部分をこのパッケージ経由のFastAPIルート越しに呼ぶ形に変更する
-2. **Phase 2**: Archlifeのバックエンドをこのパッケージを使うFastAPIアプリに移植し、DBをSQLiteへ変更。`identity/device_identity.py` で `anon_id` + パスフレーズ方式を置き換える
-3. **Phase 3**: `schema/core_schema.sql` を実データベースとして採用し、両アプリのアプリ固有テーブルから `profile_id` / `schedule_item_id` 等で参照する
+1. **Phase 1**(実装済み): 就活支援アプリの `llm/*` をこのパッケージの `llm/*` に置き換え、Archlifeの `server.js` のAI呼び出し部分をこのパッケージ経由のFastAPIルート越しに呼ぶ形に変更する
+2. **Phase 2**(実装済み): Archlifeのバックエンドをこのパッケージを使うFastAPIアプリに移植し、DBをSQLiteへ変更。`identity/device_identity.py` で `anon_id` + パスフレーズ方式を置き換える
+3. **Phase 3**(実装済み): `schema/core_schema.sql` を実データベースとして採用し、両アプリのアプリ固有テーブルから `profile_id` / `schedule_item_id` 等で参照する
 4. **Phase 4**(実装済み): `permissions` / `memory` / `plugins` を追加。各アプリは `plugin_manifest.json` で自己申告し、`PermissionGate` 経由でのみ他アプリのデータ・メモリーにアクセスできるようにする。この段階を経て初めて、Document Center / Automation / Voice Assistant など「複数アプリのデータを横断するモジュール」を安全に追加できる
 5. **Phase 5**(実装済み): 「追加したいモジュール」として要望のあった `documents`(ドキュメントセンター) / `automation`(オートメーション) / `assistant`(AIアシスタント)を追加。すべて Phase 4 の `PermissionGate` を経由する設計を踏襲しており、コアのデータアクセス経路は増えていない(新しいテーブルと、その上に薄く載る権限チェック付きストア/エンジンが増えただけ)
-6. **Phase 6**(このリポジトリのスコープ外・`life-support-os-gateway`側で対応): `local_ai_core.api.build_core_router` を各アプリ(interview_appのFastAPI・archlife-fastapi)に `include_router()` するか、専用のgatewayプロセスに集約するかを決め、Archlifeの既存Reactフロントエンド・interview_appのフロントエンドから同じ`/core/*`エンドポイントを呼べるようにする。定期実行(automationのスケジューラ)・デスクトップ常駐のAIアシスタントUIもこの段階で構築する
+6. **Phase 6**(実装済み・`life-support-os-gateway`側で対応): `local_ai_core.api.build_core_router` を各アプリ(interview_appのFastAPI・archlife-fastapi)に `include_router()` するか、専用のgatewayプロセスに集約するかを決め、Archlifeの既存Reactフロントエンド・interview_appのフロントエンドから同じ`/core/*`エンドポイントを呼べるようにする。定期実行(automationのスケジューラ)・デスクトップ常駐のAIアシスタントUIもこの段階で構築する。実際には後者(専用gatewayプロセスへの集約)を採用し、`life-support-os-gateway`がリバースプロキシとして4アプリ+`/core/*`を1つのHTTPオリジンに束ねている(詳細は[life-support-os-gateway](https://github.com/Myubd/life-support-os-gateway)を参照)
+
+> 現在、Phase 1〜6すべて実装済み。上記は各フェーズの設計意図の記録として残している。
