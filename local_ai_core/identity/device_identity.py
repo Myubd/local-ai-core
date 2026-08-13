@@ -82,19 +82,28 @@ class DeviceIdentity:
         )
         return kdf.derive(passphrase.encode("utf-8"))
 
-    def encrypt_json(self, key: bytes, obj: dict) -> EncryptedBlob:
+    def encrypt_bytes(self, key: bytes, plaintext: bytes) -> EncryptedBlob:
+        """任意のバイト列(ファイルの中身等)を暗号化する汎用版。
+        encrypt_json はこの薄いラッパーとして書き直せる。
+        """
         iv = os.urandom(_IV_LENGTH_BYTES)
         aesgcm = AESGCM(key)
-        plaintext = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         ciphertext = aesgcm.encrypt(iv, plaintext, None)
         return EncryptedBlob(
             ciphertext_b64=base64.b64encode(ciphertext).decode("ascii"),
             iv_b64=base64.b64encode(iv).decode("ascii"),
         )
 
-    def decrypt_json(self, key: bytes, blob: EncryptedBlob) -> dict:
+    def decrypt_bytes(self, key: bytes, blob: EncryptedBlob) -> bytes:
         aesgcm = AESGCM(key)
         iv = base64.b64decode(blob.iv_b64)
         ciphertext = base64.b64decode(blob.ciphertext_b64)
-        plaintext = aesgcm.decrypt(iv, ciphertext, None)
+        return aesgcm.decrypt(iv, ciphertext, None)
+
+    def encrypt_json(self, key: bytes, obj: dict) -> EncryptedBlob:
+        plaintext = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        return self.encrypt_bytes(key, plaintext)
+
+    def decrypt_json(self, key: bytes, blob: EncryptedBlob) -> dict:
+        plaintext = self.decrypt_bytes(key, blob)
         return json.loads(plaintext.decode("utf-8"))
